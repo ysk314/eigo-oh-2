@@ -73,6 +73,8 @@ export function HomePage() {
                                 <form onSubmit={handleAddUser} className={styles.addUserForm}>
                                     <input
                                         type="text"
+                                        id="newUserName"
+                                        name="newUserName"
                                         value={newUserName}
                                         onChange={(e) => setNewUserName(e.target.value)}
                                         placeholder="名前を入力"

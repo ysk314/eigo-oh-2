@@ -27,8 +27,14 @@ export function QuestionDisplay({
 
     // ハイライト処理
     const renderEnglishText = () => {
-        if (!isSpellingVisible) {
-            return <span className={styles.hidden}>{'_'.repeat(question.answerEn.length)}</span>;
+        if (mode === 3) {
+            return <span className={styles.hidden}>HIDDEN</span>;
+        }
+
+        if (mode === 2) {
+            // Mode 2: Replace alpha characters with underscores, keep spaces/punctuation
+            const masked = question.answerEn.replace(/[a-zA-Z]/g, '_');
+            return <span className={styles.hidden}>{masked}</span>;
         }
 
         if (hasHighlights) {

@@ -9,6 +9,7 @@ import {
     getDisplayState,
     TypingState
 } from '@/utils/typing';
+import { LearningMode } from '@/types';
 import styles from './TypingInput.module.css';
 
 interface TypingInputProps {
@@ -16,7 +17,7 @@ interface TypingInputProps {
     onComplete: (result: { missCount: number; timeMs: number }) => void;
     onProgress?: (current: number, total: number) => void;
     disabled?: boolean;
-    showHint?: boolean;
+    mode: LearningMode;
 }
 
 export function TypingInput({
@@ -24,18 +25,25 @@ export function TypingInput({
     onComplete,
     onProgress,
     disabled = false,
-    showHint = true,
+    mode,
 }: TypingInputProps) {
     const [typingState, setTypingState] = useState<TypingState>(() =>
         createTypingState(answer)
     );
     const [lastError, setLastError] = useState(false);
+    const [hasReported, setHasReported] = useState(false);
+
+    // 連続ミス回数 (Legacy: 2回ミスでヒント)
+    const [consecutiveMiss, setConsecutiveMiss] = useState(0);
+
     const containerRef = useRef<HTMLDivElement>(null);
 
     // 回答が変わったらリセット
     useEffect(() => {
         setTypingState(createTypingState(answer));
         setLastError(false);
+        setHasReported(false);
+        setConsecutiveMiss(0);
     }, [answer]);
 
     // 進捗を通知
@@ -47,14 +55,15 @@ export function TypingInput({
 
     // 完了を通知
     useEffect(() => {
-        if (typingState.isComplete && typingState.startTime) {
+        if (typingState.isComplete && typingState.startTime && !hasReported) {
+            setHasReported(true);
             const timeMs = Date.now() - typingState.startTime;
             onComplete({
                 missCount: typingState.missCount,
                 timeMs,
             });
         }
-    }, [typingState.isComplete, typingState.startTime, typingState.missCount, onComplete]);
+    }, [typingState.isComplete, typingState.startTime, typingState.missCount, onComplete, hasReported]);
 
     // キー入力ハンドラ
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -69,10 +78,18 @@ export function TypingInput({
         const inputChar = e.key;
         const newState = processKeyInput(typingState, inputChar);
 
+        // ミス判定
+        const isError = inputChar !== typingState.normalizedAnswer[typingState.currentIndex];
+
+        if (isError) {
+            setConsecutiveMiss(prev => prev + 1);
+        } else {
+            setConsecutiveMiss(0);
+        }
+
         setTypingState(newState);
 
         // エラー表示
-        const isError = inputChar !== typingState.normalizedAnswer[typingState.currentIndex];
         setLastError(isError);
 
         if (isError) {
@@ -94,6 +111,21 @@ export function TypingInput({
 
     const displayState = getDisplayState(typingState);
 
+    // Display Logic
+    // Mode 1: Show Guide (Remaining Text) & Current Char
+    // Mode 2/3: Hide Guide & Current Char. Reveal next char only if hint triggered.
+    const showGuide = mode === 1;
+    const isHintTriggered = !showGuide && consecutiveMiss >= 2;
+
+    const visibleCurrentChar = showGuide || isHintTriggered ? displayState.currentChar : '_';
+
+    // Remaining text:
+    // Mode 1: Show all
+    // Mode 2/3: Show underscores
+    const remainingTextDisplay = showGuide
+        ? displayState.remainingText
+        : '_'.repeat(displayState.remainingText.length);
+
     return (
         <div
             ref={containerRef}
@@ -106,10 +138,10 @@ export function TypingInput({
             <div className={styles.display}>
                 <span className={styles.completed}>{displayState.completedText}</span>
                 <span className={`${styles.current} ${lastError ? styles.shake : ''}`}>
-                    {displayState.currentChar || ''}
+                    {visibleCurrentChar || ''}
                 </span>
                 <span className={styles.remaining}>
-                    {showHint ? displayState.remainingText : '_'.repeat(displayState.remainingText.length)}
+                    {remainingTextDisplay}
                 </span>
             </div>
 

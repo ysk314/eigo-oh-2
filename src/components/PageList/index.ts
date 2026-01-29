@@ -1,2 +1,2 @@
-export { PageList } from './PageList';
+export { PartList, PageList } from './PageList';
 export { default } from './PageList';

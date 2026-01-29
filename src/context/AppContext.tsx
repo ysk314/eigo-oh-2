@@ -15,7 +15,8 @@ interface AppContextValue {
     setUser: (user: User) => void;
     addUser: (name: string) => void;
     setCourse: (courseId: string | null) => void;
-    setPageRange: (pageRangeId: string | null) => void;
+    setUnit: (unitId: string | null) => void;
+    setPart: (partId: string | null) => void;
     setSection: (sectionId: string | null) => void;
     setMode: (mode: LearningMode) => void;
     setQuestionIndex: (index: number) => void;
@@ -78,8 +79,12 @@ export function AppProvider({ children }: AppProviderProps) {
         dispatch({ type: 'SET_COURSE', payload: courseId });
     };
 
-    const setPageRange = (pageRangeId: string | null) => {
-        dispatch({ type: 'SET_PAGE_RANGE', payload: pageRangeId });
+    const setUnit = (unitId: string | null) => {
+        dispatch({ type: 'SET_UNIT', payload: unitId });
+    };
+
+    const setPart = (partId: string | null) => {
+        dispatch({ type: 'SET_PART', payload: partId });
     };
 
     const setSection = (sectionId: string | null) => {
@@ -111,14 +116,12 @@ export function AppProvider({ children }: AppProviderProps) {
     };
 
     const getProgressForQuestion = (questionId: string): UserProgress | undefined => {
-        if (!state.currentUser) return undefined;
-        const key = getProgressKey(state.currentUser.id, questionId);
+        const key = getProgressKey(state.currentUser?.id, questionId);
         return state.userProgress[key];
     };
 
     const getSectionProgressData = (sectionId: string): SectionProgress | undefined => {
-        if (!state.currentUser) return undefined;
-        const key = getSectionProgressKey(state.currentUser.id, sectionId);
+        const key = getSectionProgressKey(state.currentUser?.id, sectionId);
         return state.sectionProgress[key];
     };
 
@@ -144,7 +147,8 @@ export function AppProvider({ children }: AppProviderProps) {
         setUser,
         addUser,
         setCourse,
-        setPageRange,
+        setUnit,
+        setPart,
         setSection,
         setMode,
         setQuestionIndex,

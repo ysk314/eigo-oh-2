@@ -2,42 +2,71 @@
 // Course Page
 // ================================
 
-import React, { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
 import { Header } from '@/components/Header';
-import { PageList } from '@/components/PageList';
+import { UnitList } from '@/components/UnitList';
+import { PartList } from '@/components/PageList';
 import { SectionCard } from '@/components/SectionCard';
-import { courseStructure, getSectionsByPageRange } from '@/data/questions';
+import { courseStructure, getSectionsByPart } from '@/data/questions';
 import { LearningMode } from '@/types';
 import styles from './CoursePage.module.css';
 
 export function CoursePage() {
     const navigate = useNavigate();
-    const { state, setPageRange, setSection, setMode } = useApp();
+    const { state, setUnit, setPart, setSection, setMode } = useApp();
 
-    const selectedPageId = state.selectedPageRange || courseStructure.units[0]?.pages[0]?.id;
-    const pages = courseStructure.units[0]?.pages || [];
-    const sections = useMemo(() =>
-        getSectionsByPageRange(selectedPageId),
-        [selectedPageId]
+    const units = courseStructure.units;
+    const selectedUnitId = state.selectedUnit || units[0]?.id;
+    const selectedUnit = useMemo(() =>
+        units.find(u => u.id === selectedUnitId),
+        [units, selectedUnitId]
     );
 
-    const handlePageSelect = (pageId: string) => {
-        setPageRange(pageId);
+    const parts = selectedUnit?.parts || [];
+    const selectedPartId = state.selectedPart || parts[0]?.id;
+    const sections = useMemo(() =>
+        getSectionsByPart(selectedPartId || ''),
+        [selectedPartId]
+    );
+
+    // デフォルトのPartをStateに反映（PlayPageでの参照用）
+    useEffect(() => {
+        if (!state.selectedPart && parts.length > 0) {
+            setPart(parts[0].id);
+        }
+    }, [state.selectedPart, parts, setPart]);
+
+    const handleUnitSelect = (unitId: string) => {
+        setUnit(unitId);
+        // Unit変更時は最初のPartを自動選択
+        const unit = units.find(u => u.id === unitId);
+        if (unit?.parts[0]) {
+            setPart(unit.parts[0].id);
+        }
+    };
+
+    const handlePartSelect = (partId: string) => {
+        setPart(partId);
     };
 
     const handleModeSelect = (sectionId: string, mode: LearningMode) => {
-        setSection(sectionId);
-        setMode(mode);
-        navigate('/play');
+        // sectionId から section.type を取得して設定する
+        const targetSection = sections.find(s => s.id === sectionId);
+
+        if (targetSection) {
+            setSection(targetSection.id);
+            setMode(mode);
+            navigate('/play');
+        }
     };
 
     const handleBack = () => {
         navigate('/');
     };
 
-    const getCompletedCount = (_pageId: string) => {
+    const getCompletedCount = (_partId: string) => {
         // TODO: 進捗から完了数を計算
         return 0;
     };
@@ -45,19 +74,24 @@ export function CoursePage() {
     return (
         <div className={styles.page}>
             <Header
-                breadcrumb={[courseStructure.name, courseStructure.units[0]?.name || '']}
+                breadcrumb={[courseStructure.name, selectedUnit?.name || '']}
                 showShuffleToggle
                 showBackButton
                 onBack={handleBack}
             />
 
             <div className={styles.content}>
-                {/* 左サイドバー: ページ一覧 */}
+                {/* 左サイドバー: Unit + Part 一覧（2段構成） */}
                 <aside className={styles.sidebar}>
-                    <PageList
-                        pages={pages}
-                        selectedPageId={selectedPageId}
-                        onPageSelect={handlePageSelect}
+                    <UnitList
+                        units={units}
+                        selectedUnitId={selectedUnitId}
+                        onUnitSelect={handleUnitSelect}
+                    />
+                    <PartList
+                        parts={parts}
+                        selectedPartId={selectedPartId}
+                        onPartSelect={handlePartSelect}
                         getCompletedCount={getCompletedCount}
                     />
                 </aside>
@@ -93,7 +127,7 @@ export function CoursePage() {
                             ))
                         ) : (
                             <div className={styles.emptyState}>
-                                <p>このページにはまだ問題がありません</p>
+                                <p>このパートにはまだ問題がありません</p>
                             </div>
                         )}
                     </div>

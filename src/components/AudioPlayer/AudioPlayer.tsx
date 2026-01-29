@@ -23,6 +23,24 @@ export function AudioPlayer({
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
+    const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+    // ボイスリストの読み込み
+    useEffect(() => {
+        const loadVoices = () => {
+            const availableVoices = window.speechSynthesis.getVoices();
+            if (availableVoices.length > 0) {
+                setVoices(availableVoices);
+            }
+        };
+
+        loadVoices();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+
+        return () => {
+            window.speechSynthesis.onvoiceschanged = null;
+        };
+    }, []);
 
     const play = useCallback(() => {
         if (disabled) return;
@@ -58,6 +76,19 @@ export function AudioPlayer({
 
     const playTTS = useCallback(() => {
         const utterance = new SpeechSynthesisUtterance(text);
+
+        // 英語ボイスを優先的に選択
+        // 1. Google US English (Chrome)
+        // 2. Samantha (Mac/iOS)
+        // 3. その他 en-US
+        const enVoice = voices.find(v => v.lang === 'en-US' && v.name.includes('Google'))
+            || voices.find(v => v.lang === 'en-US' && v.name.includes('Samantha'))
+            || voices.find(v => v.lang === 'en-US');
+
+        if (enVoice) {
+            utterance.voice = enVoice;
+        }
+
         utterance.lang = 'en-US';
         utterance.rate = 0.9;
         utterance.pitch = 1;
@@ -67,7 +98,7 @@ export function AudioPlayer({
 
         synthRef.current = utterance;
         window.speechSynthesis.speak(utterance);
-    }, [text]);
+    }, [text, voices]);
 
     const stop = useCallback(() => {
         if (audioRef.current) {

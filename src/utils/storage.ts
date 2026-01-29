@@ -118,12 +118,12 @@ export function storageToAppState(storage: StorageData): Partial<AppState> {
 }
 
 // 進捗キー生成
-export function getProgressKey(userId: string, questionId: string): string {
-    return `${userId}-${questionId}`;
+export function getProgressKey(userId: string | null | undefined, questionId: string): string {
+    return userId ? `${userId}-${questionId}` : questionId;
 }
 
-export function getSectionProgressKey(userId: string, sectionId: string): string {
-    return `${userId}-${sectionId}`;
+export function getSectionProgressKey(userId: string | null | undefined, sectionId: string): string {
+    return userId ? `${userId}-${sectionId}` : sectionId;
 }
 
 // ストレージクリア（デバッグ用）

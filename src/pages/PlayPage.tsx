@@ -2,20 +2,22 @@
 // Play Page
 // ================================
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
 import { Header } from '@/components/Header';
 import { QuestionDisplay } from '@/components/QuestionDisplay';
 import { TypingInput } from '@/components/TypingInput';
 import { ProgressBar } from '@/components/ProgressBar';
-import { QuestionNav } from '@/components/QuestionNav'; // ナビ追加
-import { Button } from '@/components/Button';
-import { Card } from '@/components/Card';
-import { getQuestionById, getQuestionsBySection } from '@/data/questions';
+import { QuestionNav } from '@/components/QuestionNav';
+import { TimerBar } from '@/components/TimerBar/TimerBar';
+import { ResultCard } from '@/components/ResultCard/ResultCard';
+import { getQuestionsBySection, getSectionById } from '@/data/questions';
 import { shuffleWithNoConsecutive } from '@/utils/shuffle';
-import { checkSectionCleared } from '@/utils/progress';
+import { soundManager } from '@/utils/sound';
 import { UserProgress } from '@/types';
+import { calculateScore, ScoreResult } from '@/utils/score';
+import { useGameTimer } from '@/hooks/useGameTimer';
 import styles from './PlayPage.module.css';
 
 export function PlayPage() {
@@ -27,62 +29,87 @@ export function PlayPage() {
         markSectionCleared
     } = useApp();
 
-    const { selectedPageRange, selectedSection, selectedMode, currentUser, shuffleMode } = state;
+    const { selectedPart, selectedSection, selectedMode, currentUser, shuffleMode } = state;
 
-    // セクションの問題をロード & シャッフル
+    // Load Questions
     const questions = useMemo(() => {
-        if (!selectedPageRange || !selectedSection) return [];
-        const baseQuestions = getQuestionsBySection(selectedPageRange, selectedSection);
-
+        if (!selectedPart || !selectedSection) return [];
+        const section = getSectionById(selectedSection);
+        if (!section) return [];
+        const baseQuestions = getQuestionsBySection(selectedPart, section.type);
         if (shuffleMode) {
             return shuffleWithNoConsecutive(baseQuestions, (q) => q.answerEn);
         }
         return baseQuestions.sort((a, b) => a.orderIndex - b.orderIndex);
-    }, [selectedPageRange, selectedSection, shuffleMode]);
+    }, [selectedPart, selectedSection, shuffleMode]);
 
-    // 現在の状態
+    // Calculate total characters for timer
+    const totalChars = useMemo(() => {
+        return questions.reduce((acc, q) => acc + q.answerEn.length, 0);
+    }, [questions]);
+
+    // Game State
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFinished, setIsFinished] = useState(false);
     const [sessionResults, setSessionResults] = useState<UserProgress[]>([]);
+    const [finalScore, setFinalScore] = useState<ScoreResult | null>(null);
+    const [isTimeUp, setIsTimeUp] = useState(false);
 
     const currentQuestion = questions[currentIndex];
-    const progressPercent = questions.length > 0 ? Math.round(((currentIndex) / questions.length) * 100) : 0;
 
-    // 初期化チェック
+    // Timer Hook
+    const handleTimeUp = useCallback(() => {
+        setIsTimeUp(true);
+        // Force finish logic
+        soundManager.playSE('try-again');
+        setIsFinished(true); // Triggers result calculation (handled below)
+    }, []);
+
+    const { timeLeft, timeLimit, startTimer, stopTimer, resetTimer } = useGameTimer({
+        totalChars,
+        onTimeUp: handleTimeUp
+    });
+
+    // Initialize Check
     useEffect(() => {
         if (!selectedSection || questions.length === 0) {
-            navigate('/course'); // 何も選択されてなければ戻る
+            navigate('/course');
+        } else {
+            // Start Timer when questions are ready
+            soundManager.init();
+            resetTimer(totalChars);
+            startTimer();
         }
-    }, [selectedSection, questions, navigate]);
+        return () => stopTimer();
+    }, [selectedSection, questions, navigate, totalChars, startTimer, stopTimer, resetTimer]);
 
-    // デバッグ用: 進捗ログ
-    useEffect(() => {
-        // console.log('Current Question:', currentQuestion);
-    }, [currentQuestion]);
-
-    // 問題完了時の処理
+    // Question Completion Handler
     const handleQuestionComplete = useCallback((result: { missCount: number; timeMs: number }) => {
-        if (!currentQuestion) return;
+        if (!currentQuestion || isTimeUp) return;
 
-        const isCorrect = result.missCount === 0; // 一度もミスなしならPerfect扱い？(要件次第だが今回は完了ベース)
+        const isCorrect = result.missCount === 0;
 
-        // 進捗保存
+        // Save Progress
         updateProgress(currentQuestion.id, {
-            attemptsCount: 1, // 加算用
-            correctCount: 1,  // 完了したので1回正解とみなす (仕様要確認: 逐次判定なので入力完了=正解)
+            attemptsCount: 1,
+            correctCount: 1,
             missCount: result.missCount,
         });
 
-        // セッション結果を記録（後でクリア判定に使用）
+        // Add to Session Results
         setSessionResults(prev => [...prev, {
             questionId: currentQuestion.id,
             attemptsCount: 1,
             correctCount: 1,
             missCount: result.missCount,
-            clearedMode: selectedMode, // 仮
+            clearedMode: selectedMode,
         }]);
 
-        // 少し待って次の問題へ
+        if (isCorrect) {
+            soundManager.playSE('success');
+        }
+
+        // Next Question or Finish
         setTimeout(() => {
             if (currentIndex < questions.length - 1) {
                 setCurrentIndex(prev => prev + 1);
@@ -90,36 +117,56 @@ export function PlayPage() {
             } else {
                 finishSession();
             }
-        }, 800);
-    }, [currentQuestion, currentIndex, questions.length, updateProgress, setQuestionIndex, selectedMode]);
+        }, 500); // Slightly faster transition
+    }, [currentQuestion, currentIndex, questions.length, updateProgress, setQuestionIndex, selectedMode, isTimeUp]);
 
-    // セッション完了処理
+    // Finish Session
     const finishSession = () => {
+        stopTimer();
         setIsFinished(true);
-
-        // セクションクリア判定
-        // 注: sessionResultsはstate更新のタイミングでまだ最新じゃない可能性があるため、ここで最新の計算を行う必要があるが
-        // 簡易的に現状のsessionResults + 今回の結果で判定すべき。
-        // ここではContext側のProgressが更新されていることを前提に、後ほど判定するか
-        // あるいはローカルの集計で判定する。
-
-        // 簡易実装: 今回のセッションで全問正解(入力完了)しているので、ミス率だけで判定
-        // 仕様: 正答率90%以上
-
-        // 実際の判定はResult画面で行うか、ここで行ってResultに渡す
     };
 
-    const handleNextMode = () => {
-        // 次のモードへ（未実装：モード切替してリロード）
-        // とりあえずコース画面へ戻る
-        navigate('/course');
-    };
+    // Calculate Results when Finished
+    // We use a ref to prevent double calculation or re-render loops
+    const hasProcessedResult = useRef(false);
 
+    useEffect(() => {
+        if (isFinished && !hasProcessedResult.current) {
+            hasProcessedResult.current = true;
+            stopTimer();
+
+            // Calculate aggregated stats
+            const totalMiss = sessionResults.reduce((acc, cur) => acc + cur.missCount, 0);
+
+            // Calculate Score & Rank
+            const scoreResult = calculateScore(totalMiss, timeLeft, timeLimit, isTimeUp);
+            setFinalScore(scoreResult);
+
+            // Unlock Logic (Rank S required)
+            if (scoreResult.rank === 'S') {
+                markSectionCleared(selectedSection!, selectedMode);
+                soundManager.playSE('fanfare');
+            } else {
+                if (!isTimeUp) {
+                    soundManager.playSE('success'); // General finish
+                }
+            }
+        }
+    }, [isFinished, sessionResults, timeLeft, timeLimit, isTimeUp, selectedSection, selectedMode, markSectionCleared, stopTimer]);
+
+
+    // Handlers needed for Result View
     const handleRetry = () => {
+        hasProcessedResult.current = false;
         setCurrentIndex(0);
         setQuestionIndex(0);
-        setIsFinished(false);
         setSessionResults([]);
+        setIsFinished(false);
+        setIsTimeUp(false);
+        setFinalScore(null);
+
+        resetTimer(totalChars);
+        startTimer();
     };
 
     const handleBack = () => {
@@ -129,69 +176,33 @@ export function PlayPage() {
         }
     };
 
-    // 完了画面
-    if (isFinished) {
+    // --- Render ---
+
+    // 1. Result View
+    if (isFinished && finalScore) {
         const totalMiss = sessionResults.reduce((acc, cur) => acc + cur.missCount, 0);
-        const totalChars = questions.reduce((acc, q) => acc + q.answerEn.length, 0); // 概算
-        // 厳密な正答率計算: (総文字数) / (総文字数 + 総ミス)
-        const accuracy = totalChars > 0
-            ? Math.round((totalChars / (totalChars + totalMiss)) * 100)
-            : 0;
-
-        const isCleared = accuracy >= 90;
-
-        // クリア状態を保存
-        if (isCleared && selectedSection) {
-            markSectionCleared(selectedSection, selectedMode);
-        }
+        const totalCorrect = sessionResults.reduce((acc, cur) => acc + cur.correctCount, 0);
 
         return (
             <div className={styles.page}>
                 <Header title="結果発表" showUserSelect={false} />
                 <main className={styles.resultMain}>
-                    <Card className={styles.resultCard} padding="lg">
-                        <h2 className={styles.resultTitle}>
-                            {isCleared ? '🎉 Excellent! 🎉' : 'Good Job!'}
-                        </h2>
-
-                        <div className={styles.stats}>
-                            <div className={styles.statItem}>
-                                <span className={styles.statLabel}>正答率</span>
-                                <span className={`${styles.statValue} ${isCleared ? styles.success : ''}`}>
-                                    {accuracy}%
-                                </span>
-                            </div>
-                            <div className={styles.statItem}>
-                                <span className={styles.statLabel}>ミス回数</span>
-                                <span className={styles.statValue}>{totalMiss}回</span>
-                            </div>
-                        </div>
-
-                        {isCleared ? (
-                            <div className={styles.message}>
-                                目標達成！次のモードが解放されました！
-                            </div>
-                        ) : (
-                            <div className={styles.message}>
-                                惜しい！90%以上を目指してもう一度チャレンジしよう！
-                            </div>
-                        )}
-
-                        <div className={styles.actions}>
-                            <Button onClick={handleRetry} variant="secondary" size="lg">
-                                もう一度
-                            </Button>
-                            <Button onClick={() => navigate('/course')} variant="primary" size="lg">
-                                コースへ戻る
-                            </Button>
-                        </div>
-                    </Card>
+                    <ResultCard
+                        result={finalScore}
+                        stats={{
+                            correct: totalCorrect,
+                            miss: totalMiss,
+                            timeLeft: timeLeft
+                        }}
+                        onRetry={handleRetry}
+                        onBack={() => navigate('/course')}
+                    />
                 </main>
             </div>
         );
     }
 
-    // プレイ画面
+    // 2. Play View
     return (
         <div className={styles.page}>
             <header className={styles.playHeader}>
@@ -199,7 +210,13 @@ export function PlayPage() {
                     ← 戻る
                 </button>
                 <div className={styles.progressContainer}>
-                    <ProgressBar current={currentIndex + 1} total={questions.length} />
+                    {/* Timer Bar instead of simple Progress Bar? Or keep both? Keeping both seems useful.
+                         Legacy had Bar for Timer. We'll use TimerBar here.
+                         Actually legacy design put timer in main area. Let's follow legacy layout roughly but cleaner.
+                      */}
+                    <div style={{ width: '100%', maxWidth: 600 }}>
+                        <TimerBar total={timeLimit} current={timeLeft} />
+                    </div>
                 </div>
                 <div className={styles.userInfo}>
                     {currentUser?.name}
@@ -207,17 +224,18 @@ export function PlayPage() {
             </header>
 
             <main className={styles.playMain}>
-                {/* 問題番号ナビゲーション (オプション) */}
                 <div className={styles.navWrapper}>
                     <QuestionNav
                         total={questions.length}
                         current={currentIndex}
-                        enableJump={false} // プレイ中はジャンプ不可
+                        enableJump={false}
                     />
                 </div>
 
                 {currentQuestion ? (
                     <div className={styles.questionArea}>
+                        {/* Timer text was here in legacy, but we put it in header/TimerBar component */}
+
                         <QuestionDisplay
                             question={currentQuestion}
                             mode={selectedMode}
@@ -228,8 +246,8 @@ export function PlayPage() {
                             <TypingInput
                                 answer={currentQuestion.answerEn}
                                 onComplete={handleQuestionComplete}
-                                disabled={false}
-                                showHint={selectedMode !== 3} // モード3以外はヒント（アンダースコア等）あり
+                                disabled={isFinished || isTimeUp}
+                                mode={selectedMode}
                             />
                         </div>
                     </div>
@@ -237,12 +255,6 @@ export function PlayPage() {
                     <div>Loading...</div>
                 )}
             </main>
-
-            {/* キーボードガイド（画像表示） */}
-            <footer className={styles.footer}>
-                {/* 必要であればここにKeyboardGuideコンポーネントを配置 */}
-                {/* 今回は画像のみの指定だったので簡易実装も可だが、要件にあったのでスペース確保 */}
-            </footer>
         </div>
     );
 }

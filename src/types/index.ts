@@ -19,7 +19,7 @@ export interface Question {
     id: string;
     course: string;           // "New Horizon 1"
     unit: string;             // "Unit 6"
-    pageRange: string;        // "p30-31"
+    part: string;             // "p30-31" (旧pageRange)
     section: SectionType;
     sectionLabel: string;     // 日本語表示用 "小学校の単語"
     promptJp: string;         // "セブ" or "私は試合に勝ちたいです。"
@@ -39,10 +39,10 @@ export interface Course {
 export interface Unit {
     id: string;
     name: string;           // "Unit 6"
-    pages: PageRange[];
+    parts: Part[];
 }
 
-export interface PageRange {
+export interface Part {
     id: string;
     range: string;          // "p30-31"
     totalQuestions: number;
@@ -66,11 +66,16 @@ export interface UserProgress {
     lastPlayedAt?: string;
 }
 
+export type Rank = 'S' | 'A' | 'B' | 'C' | null;
+
 export interface SectionProgress {
     sectionId: string;
     mode1Cleared: boolean;
     mode2Cleared: boolean;
     mode3Cleared: boolean;
+    mode1Rank?: Rank; // New: Legacy Rank logic
+    mode2Rank?: Rank;
+    mode3Rank?: Rank;
     totalAttempts: number;
     totalCorrect: number;
     totalMiss: number;
@@ -91,7 +96,8 @@ export interface AppState {
 
     // Navigation state
     selectedCourse: string | null;
-    selectedPageRange: string | null;
+    selectedUnit: string | null;
+    selectedPart: string | null;
     selectedSection: string | null;
     selectedMode: LearningMode;
 
@@ -113,7 +119,8 @@ export type AppAction =
     | { type: 'SET_USER'; payload: User }
     | { type: 'ADD_USER'; payload: User }
     | { type: 'SET_COURSE'; payload: string | null }
-    | { type: 'SET_PAGE_RANGE'; payload: string | null }
+    | { type: 'SET_UNIT'; payload: string | null }
+    | { type: 'SET_PART'; payload: string | null }
     | { type: 'SET_SECTION'; payload: string | null }
     | { type: 'SET_MODE'; payload: LearningMode }
     | { type: 'SET_QUESTION_INDEX'; payload: number }

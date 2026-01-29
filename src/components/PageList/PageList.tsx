@@ -1,42 +1,42 @@
 // ================================
-// Page List Component
+// Part List Component
 // ================================
 
 import React from 'react';
-import { PageRange } from '@/types';
+import { Part } from '@/types';
 import styles from './PageList.module.css';
 
-interface PageListProps {
-    pages: PageRange[];
-    selectedPageId: string | null;
-    onPageSelect: (pageId: string) => void;
-    getCompletedCount?: (pageId: string) => number;
+interface PartListProps {
+    parts: Part[];
+    selectedPartId: string | null;
+    onPartSelect: (partId: string) => void;
+    getCompletedCount?: (partId: string) => number;
 }
 
-export function PageList({
-    pages,
-    selectedPageId,
-    onPageSelect,
+export function PartList({
+    parts,
+    selectedPartId,
+    onPartSelect,
     getCompletedCount = () => 0,
-}: PageListProps) {
+}: PartListProps) {
     return (
-        <nav className={styles.list} aria-label="ページ一覧">
-            {pages.map((page) => {
-                const completed = getCompletedCount(page.id);
-                const isSelected = page.id === selectedPageId;
-                const isEmpty = page.totalQuestions === 0;
+        <nav className={styles.list} aria-label="パート一覧">
+            {parts.map((part) => {
+                const completed = getCompletedCount(part.id);
+                const isSelected = part.id === selectedPartId;
+                const isEmpty = part.totalQuestions === 0;
 
                 return (
                     <button
-                        key={page.id}
+                        key={part.id}
                         className={`${styles.item} ${isSelected ? styles.selected : ''} ${isEmpty ? styles.empty : ''}`}
-                        onClick={() => !isEmpty && onPageSelect(page.id)}
+                        onClick={() => !isEmpty && onPartSelect(part.id)}
                         disabled={isEmpty}
                         aria-current={isSelected ? 'page' : undefined}
                     >
-                        <span className={styles.range}>{page.range}</span>
+                        <span className={styles.range}>{part.range}</span>
                         <span className={styles.count}>
-                            {isEmpty ? '-' : `${completed}/${page.totalQuestions}`}
+                            {isEmpty ? '-' : `${completed}/${part.totalQuestions}`}
                         </span>
                     </button>
                 );
@@ -45,4 +45,7 @@ export function PageList({
     );
 }
 
-export default PageList;
+// 後方互換のため PageList もエクスポート
+export const PageList = PartList;
+
+export default PartList;
