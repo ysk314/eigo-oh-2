@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from '@/context/AppContext';
 import { HomePage, CoursePage, PlayPage } from '@/pages';
 import '@/styles/global.css';
@@ -7,14 +7,14 @@ import '@/styles/global.css';
 function App() {
     return (
         <AppProvider>
-            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+            <HashRouter>
                 <Routes>
                     <Route path="/" element={<HomePage />} />
                     <Route path="/course" element={<CoursePage />} />
                     <Route path="/play" element={<PlayPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
-            </BrowserRouter>
+            </HashRouter>
         </AppProvider>
     );
 }
